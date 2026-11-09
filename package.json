@@ -1,14 +1,13 @@
 {
- "name": "k1-site",
- "version": "1.0.0",
- "private": true,
- "description": "Kenya One clan site",
- "main": "server.js",
- "scripts": {
-  "start": "node server.js",
-  "build": "python3 build.py"
- },
- "engines": {
-  "node": ">=18"
- }
+  "name": "k1-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Kenya One clan site",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
 }
