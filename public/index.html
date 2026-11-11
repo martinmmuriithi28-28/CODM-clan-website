@@ -220,6 +220,30 @@ footer { padding-block: 28px 40px; color: var(--muted); font-size: 14px; border-
 .team h4 { margin: 0; font: 700 18px/1.1 var(--display); }
 .team h4 small { font: 500 14px/1 var(--body); color: var(--muted); margin-left: 4px; }
 .team ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.team li { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.team h4 .tk { float: right; font: 700 15px/1.2 var(--body); color: var(--accent); }
+.kc { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.kc b { color: var(--fg); font-size: 15px; }
+.results { border-top: 1px solid var(--line); padding-top: 14px; display: grid; gap: 12px; }
+.results h4 { margin: 0; font: 700 20px/1.1 var(--display); }
+.res-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.rank { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); padding: 12px; display: grid; gap: 6px; align-content: start; }
+.rank h5 { margin: 0 0 2px; font: 700 15px/1.2 var(--body); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.rank ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.rank li { display: grid; grid-template-columns: 34px 1fr auto; gap: 8px; align-items: baseline; }
+.rank li .no { font: 700 16px/1 var(--display); color: var(--muted); }
+.rank li.first .no { color: var(--accent); }
+.rank li small { color: var(--muted); display: block; font-size: 12px; }
+.rank li .n { font-weight: 700; }
+.scoreed { display: grid; gap: 14px; padding: 14px; }
+.scoreed h4 { margin: 0; font: 700 20px/1.1 var(--display); }
+.sc-team { display: grid; gap: 8px; }
+.sc-team h5 { margin: 0; font: 700 16px/1.2 var(--body); }
+.sc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.sc-name { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+.sc-cell { display: grid; gap: 2px; justify-items: center; font-size: 12px; color: var(--muted); }
+.sc-sel { padding: 8px 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg); font: inherit; font-size: 15px; min-width: 58px; }
+.sc-cell input { width: 58px; text-align: center; padding: 8px 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg); font: inherit; font-size: 16px; }
 .team li .tag { margin-right: 1px; }
 .team-edit { border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 10px; background: var(--bg); }
 .team-edit .head { display: grid; grid-template-columns: 90px minmax(0, 1fr) auto; gap: 8px; align-items: end; }
@@ -645,7 +669,7 @@ footer { padding-block: 28px 40px; color: var(--muted); font-size: 14px; border-
   var D = { x: {}, roster: {}, roles: {}, contacts: {}, posts: [], scrims: [], log: [], shop: {}, drop: {}, pending: {} };
   var V = { db: null, id: null, admin: false, owner: false, canWrite: false, loaded: false, error: "" };
   var filter = "all", query = "", editing = null, removing = null, statusTimer = null;
-  var confirmDel = null, openRem = null;
+  var confirmDel = null, openRem = null, openScore = null;
   var B = null;                 /* scrim builder state */
   var tagSel = {};              /* post composer: tagged member ids */
   var bundle = 400;
@@ -974,6 +998,7 @@ footer { padding-block: 28px 40px; color: var(--muted); font-size: 14px; border-
   /* ---------- scrims ---------- */
   function renderScrims() {
     var wrap = $("#scrimList"); wrap.textContent = "";
+    purgeOld();
     if (!D.scrims.length) { wrap.append(el("div", { class: "panel empty" }, V.db ? (V.admin ? "No scrims yet. Use New scrim to make the first one." : "No scrims planned yet.") : "Scrims appear here once you are signed in.")); return; }
     var up = D.scrims.filter(upcoming).sort(function (a, b) { return scrimTime(a) - scrimTime(b); });
     var past = D.scrims.filter(function (s) { return !upcoming(s); }).sort(function (a, b) { return scrimTime(b) - scrimTime(a); });
@@ -989,14 +1014,20 @@ footer { padding-block: 28px 40px; color: var(--muted); font-size: 14px; border-
       el("div", { class: "stack", style: "gap:6px" }, el("h3", {}, s.title || "Scrim"), head),
       s.notes ? el("p", { style: "white-space:pre-wrap;overflow-wrap:anywhere" }, s.notes) : null);
     var tw = el("div", { class: "teams" });
+    var st = scrimStats(s);
     teams.slice().sort(function (a, b) { return a.no - b.no; }).forEach(function (t) {
       var isMine = (t.members || []).indexOf(myId()) > -1;
+      var tt = st.teams.filter(function (x) { return x.t.no === t.no; })[0];
       tw.append(el("div", { class: "team" + (isMine ? " mine" : "") },
-        el("h4", {}, "Team " + t.no, t.nick ? el("small", {}, "· " + t.nick) : null),
-        el("ul", {}, (t.members || []).map(function (id) { return el("li", {}, nameSpan(id, "")); }))));
+        el("h4", {}, "Team " + t.no, t.nick ? el("small", {}, "· " + t.nick) : null, st.has && tt ? el("span", { class: "tk" }, tt.pts + " pts") : null),
+        el("ul", {}, (t.members || []).map(function (id) {
+          var k = killsOf(s, id);
+          return el("li", {}, nameSpan(id, ""), st.has ? el("span", { class: "kc" }, k.a.slice(0, GAMES).map(function (x) { return typeof x === "number" ? x : "–"; }).join(" · ") + " = ", el("b", {}, k.total)) : null);
+        }))));
     });
     if (!teams.length) tw.append(el("p", { class: "muted" }, "Teams are not set yet."));
     card.append(tw);
+    if (st.has) card.append(resultsBox(s, st));
     if (V.admin) {
       var acts = el("div", { class: "row-btns" });
       var key = "s:" + s.id;
@@ -1007,14 +1038,141 @@ footer { padding-block: 28px 40px; color: var(--muted); font-size: 14px; border-
       } else {
         acts.append(
           el("button", { type: "button", class: "btn small", onclick: function () { openBuilder(s); } }, "Edit"),
+          teams.length ? el("button", { type: "button", class: "btn small", onclick: function () { openScore = openScore === key ? null : key; renderScrims(); } }, st.has ? "Edit results" : "Add results") : null,
           el("button", { type: "button", class: "btn small", onclick: function () { copyText(scrimMsg(s), this); } }, "Copy message"),
+          st.has ? el("button", { type: "button", class: "btn small", onclick: function () { copyText(resultsMsg(s), this); } }, "Copy results") : null,
           el("button", { type: "button", class: "btn small", onclick: function () { openRem = openRem === key ? null : key; renderScrims(); } }, "WhatsApp reminders"),
           el("button", { type: "button", class: "btn small danger", onclick: function () { confirmDel = key; renderScrims(); } }, "Delete"));
       }
       card.append(acts);
       if (openRem === key) card.append(scrimRemind(s));
+      if (openScore === key) card.append(scoreEditor(s));
     }
     return card;
+  }
+  /* ---------- results: kills, finishing position, points ---------- */
+  var GAMES = 3, KILL_PTS = 3, POS_PTS = { 1: 20, 2: 15, 3: 10 }, KEEP_MS = 30 * 864e5;
+  function hasResults(s) { return !!((s.kills && Object.keys(s.kills).length) || (s.place && Object.keys(s.place).length)); }
+  function resultsOld(s) { return hasResults(s) && Date.now() - (s.scoredAt || s.at || 0) > KEEP_MS; }
+  function placeOf(s, no, g) { var a = s.place && s.place[no], v = a && a[g]; return v === 1 || v === 2 || v === 3 ? v : 0; }
+  function ord(n) { return n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : "–"; }
+  function killsOf(s, id) {
+    var a = (s.kills && Array.isArray(s.kills[id])) ? s.kills[id] : [], t = 0;
+    for (var i = 0; i < GAMES; i++) if (typeof a[i] === "number") t += a[i];
+    return { a: a, total: t };
+  }
+  function giveRanks(list, key) { list.forEach(function (x, i) { x.rank = i && key(list[i - 1]) === key(x) ? list[i - 1].rank : i + 1; }); return list; }
+  function scrimStats(s) {
+    if (!hasResults(s) || resultsOld(s)) return { has: false, teams: [], players: [] };
+    var teams = [], players = [];
+    (s.teams || []).forEach(function (t) {
+      var mem = t.members || [], kills = 0, pts = 0, per = [];
+      mem.forEach(function (id) { var k = killsOf(s, id); players.push({ id: id, team: t.no, total: k.total, a: k.a }); });
+      for (var g = 0; g < GAMES; g++) {
+        var gk = 0; mem.forEach(function (id) { var v = killsOf(s, id).a[g]; if (typeof v === "number") gk += v; });
+        var pos = placeOf(s, t.no, g), gp = gk * KILL_PTS + (POS_PTS[pos] || 0);
+        per.push({ k: gk, pos: pos, pts: gp }); kills += gk; pts += gp;
+      }
+      teams.push({ t: t, kills: kills, pts: pts, per: per, size: mem.length, avg: mem.length ? kills / mem.length : 0 });
+    });
+    teams.sort(function (x, y) { return y.pts - x.pts || y.kills - x.kills || x.t.no - y.t.no; });
+    players.sort(function (x, y) { return y.total - x.total; });
+    return { has: true, teams: giveRanks(teams, function (x) { return x.pts + "|" + x.kills; }), players: giveRanks(players, function (x) { return x.total; }) };
+  }
+  var purged = {};
+  function purgeOld() {                       /* results are kept for 30 days, then a leader's visit clears them */
+    if (!V.admin || !V.db) return;
+    D.scrims.forEach(function (s) {
+      if (resultsOld(s) && !purged[s.id]) {
+        purged[s.id] = 1;
+        V.db.doc("scrims/" + s.id).update({ kills: {}, place: {}, scoredAt: 0 }).catch(function () { delete purged[s.id]; });
+      }
+    });
+  }
+  function resultsBox(s, st) {
+    var tr = el("ol", {}, st.teams.map(function (x) {
+      return el("li", { class: x.rank === 1 && x.pts > 0 ? "first" : "" }, el("span", { class: "no" }, "#" + x.rank),
+        el("span", {}, "Team " + x.t.no + (x.t.nick ? " · " + x.t.nick : ""),
+          el("small", {}, x.kills + " kills · " + x.per.map(function (r, i) { return "G" + (i + 1) + " " + ord(r.pos); }).join(" · "))),
+        el("span", { class: "n" }, x.pts + " pts"));
+    }));
+    var pr = el("ol", {}, st.players.slice(0, 10).map(function (x) {
+      return el("li", { class: x.rank === 1 && x.total > 0 ? "first" : "" }, el("span", { class: "no" }, "#" + x.rank),
+        el("span", {}, nameSpan(x.id, ""), el("small", {}, "Team " + x.team + " · " + [0, 1, 2].map(function (i) { return typeof x.a[i] === "number" ? x.a[i] : "–"; }).join(" · "))),
+        el("span", { class: "n" }, x.total + " kills"));
+    }));
+    return el("div", { class: "results" }, el("h4", {}, "Results · " + GAMES + " games"),
+      el("div", { class: "res-grid" }, el("div", { class: "rank" }, el("h5", {}, "Best team (points)"), tr), el("div", { class: "rank" }, el("h5", {}, "Top players (kills)"), pr)),
+      el("p", { class: "muted", style: "margin:0;font-size:13px" }, "1 kill = 3 points · 1st place = 20 · 2nd = 15 · 3rd = 10. Results are removed after 30 days."));
+  }
+  function resultsMsg(s) {
+    var st = scrimStats(s), L = ["*Kenya One " + TAG + " scrim results*", "*" + (s.title || "Scrim") + "*", fmtDate(s.date), "", "*Best team*"];
+    st.teams.forEach(function (x) { L.push(x.rank + ". Team " + x.t.no + (x.t.nick ? " · " + x.t.nick : "") + " — " + x.pts + " pts (" + x.kills + " kills; " + x.per.map(function (r) { return ord(r.pos); }).join(", ") + ")"); });
+    L.push("", "*Top players (kills)*");
+    st.players.slice(0, 10).forEach(function (x) { L.push(x.rank + ". " + tagged(x.id) + " — " + x.total + " (" + [0, 1, 2].map(function (i) { return typeof x.a[i] === "number" ? x.a[i] : "-"; }).join(", ") + ")"); });
+    L.push("", "1 kill = 3 pts; 1st = 20, 2nd = 15, 3rd = 10");
+    if (siteLink()) L.push("", "More: " + siteLink());
+    return L.join("\n");
+  }
+  function scoreEditor(s) {
+    var inputs = {}, pos = {}, box = el("div", { class: "panel scoreed" }, el("h4", {}, "Results per game"),
+      el("p", { class: "muted", style: "margin:0" }, "For each team pick where it finished (1st, 2nd or 3rd) in games 1, 2 and 3, then type each player's kills. Leave a game empty if it was not played. 1 kill = 3 points, 1st = 20, 2nd = 15, 3rd = 10."));
+    (s.teams || []).slice().sort(function (a, b) { return a.no - b.no; }).forEach(function (t) {
+      var tb = el("div", { class: "sc-team" }, el("h5", {}, "Team " + t.no + (t.nick ? " · " + t.nick : "")));
+      var prow = el("div", { class: "sc-row" }, el("span", { class: "sc-name" }, "Finished"));
+      pos[t.no] = [];
+      for (var g = 0; g < GAMES; g++) {
+        var cur = placeOf(s, t.no, g);
+        var sel = el("select", { class: "sc-sel", "aria-label": "Team " + t.no + " position, game " + (g + 1) },
+          [["", "4th+"], ["1", "1st"], ["2", "2nd"], ["3", "3rd"]].map(function (o) { return el("option", { value: o[0], selected: String(cur || "") === o[0] }, o[1]); }));
+        pos[t.no].push(sel); prow.append(el("label", { class: "sc-cell" }, el("span", {}, "G" + (g + 1)), sel));
+      }
+      tb.append(prow);
+      (t.members || []).forEach(function (id) {
+        var k = (s.kills && Array.isArray(s.kills[id])) ? s.kills[id] : [], row = el("div", { class: "sc-row" }, el("span", { class: "sc-name" }, nameSpan(id, "")));
+        inputs[id] = [];
+        for (var g2 = 0; g2 < GAMES; g2++) {
+          var inp = el("input", { type: "number", inputmode: "numeric", min: "0", max: "99", step: "1", value: typeof k[g2] === "number" ? String(k[g2]) : "", "aria-label": tagged(id) + " kills, game " + (g2 + 1) });
+          inputs[id].push(inp); row.append(el("label", { class: "sc-cell" }, el("span", {}, "kills"), inp));
+        }
+        tb.append(row);
+      });
+      box.append(tb);
+    });
+    var msg = el("div", { class: "status", role: "status", style: "min-height:0;margin:0" });
+    function bad(t) { msg.textContent = t; msg.className = "status err"; }
+    function save() {
+      var kills = {}, place = {}, seen = [{}, {}, {}];
+      for (var id in inputs) {
+        var arr = [], any = false;
+        for (var g = 0; g < GAMES; g++) {
+          var v = inputs[id][g].value.trim();
+          if (v === "") { arr.push(null); continue; }
+          if (!/^\d{1,2}$/.test(v)) { bad("Kills must be whole numbers from 0 to 99."); return; }
+          arr.push(Number(v)); any = true;
+        }
+        if (any) kills[id] = arr;
+      }
+      for (var no in pos) {
+        var pa = [], pany = false;
+        for (var g3 = 0; g3 < GAMES; g3++) {
+          var pv = pos[no][g3].value;
+          if (!pv) { pa.push(null); continue; }
+          if (seen[g3][pv]) { bad("Two teams cannot both finish " + ord(Number(pv)) + " in game " + (g3 + 1) + "."); return; }
+          seen[g3][pv] = 1; pa.push(Number(pv)); pany = true;
+        }
+        if (pany) place[no] = pa;
+      }
+      msg.className = "status"; msg.textContent = "";
+      var any2 = Object.keys(kills).length || Object.keys(place).length;
+      run(function () { return V.db.doc("scrims/" + s.id).update({ kills: kills, place: place, scoredAt: any2 ? Date.now() : 0 }); }, "Results saved.").then(function (ok) {
+        if (ok) { logEvt("Results saved: " + (s.title || "Scrim")); openScore = null; renderScrims(); }
+      });
+    }
+    box.append(msg, el("div", { class: "row-btns" },
+      el("button", { type: "button", class: "btn primary", onclick: save }, "Save results"),
+      el("button", { type: "button", class: "btn", onclick: function () { openScore = null; renderScrims(); } }, "Cancel")));
+    return box;
   }
   function copyText(text, btn) {
     var done = function (ok) { var o = btn.textContent; btn.textContent = ok ? "Copied. Paste in WhatsApp" : "Press and hold to copy"; setTimeout(function () { btn.textContent = o; }, 2600); };
@@ -1137,6 +1295,17 @@ footer { padding-block: 28px 40px; color: var(--muted); font-size: 14px; border-
     var ref = B.id ? V.db.doc("scrims/" + B.id) : V.db.collection("scrims").doc();
     var existing = B.id && D.scrims.filter(function (s) { return s.id === B.id; })[0];
     doc.at = existing ? existing.at : Date.now();
+    if (existing && existing.kills) {
+      var inTeams = {}; doc.teams.forEach(function (t) { t.members.forEach(function (id) { inTeams[id] = 1; }); });
+      var kept = {}; Object.keys(existing.kills).forEach(function (id) { if (inTeams[id]) kept[id] = existing.kills[id]; });
+      if (Object.keys(kept).length) doc.kills = kept;
+    }
+    if (existing && existing.place) {
+      var nos2 = {}; doc.teams.forEach(function (t) { nos2[t.no] = 1; });
+      var kp = {}; Object.keys(existing.place).forEach(function (n) { if (nos2[n]) kp[n] = existing.place[n]; });
+      if (Object.keys(kp).length) doc.place = kp;
+    }
+    if (existing && existing.scoredAt) doc.scoredAt = existing.scoredAt;
     run(function () { return ref.set(doc); }, "Scrim saved.").then(function (ok) { if (ok) { logEvt("Scrim saved: " + doc.title); B = null; renderBuilder(); } });
   }
 
