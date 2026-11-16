@@ -242,6 +242,7 @@ footer { padding-block: 28px 40px; color: var(--muted); font-size: 14px; border-
 .sc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .sc-name { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
 .sc-cell { display: grid; gap: 2px; justify-items: center; font-size: 12px; color: var(--muted); }
+.pick { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 8px; font-size: 15px; }
 .sc-sel { padding: 8px 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg); font: inherit; font-size: 15px; min-width: 58px; }
 .sc-cell input { width: 58px; text-align: center; padding: 8px 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg); font: inherit; font-size: 16px; }
 .team li .tag { margin-right: 1px; }
@@ -666,7 +667,7 @@ footer { padding-block: 28px 40px; color: var(--muted); font-size: 14px; border-
   function fmtAt(ms) { return new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); }
 
   /* ---------- state ---------- */
-  var D = { x: {}, roster: {}, roles: {}, contacts: {}, posts: [], scrims: [], log: [], shop: {}, drop: {}, pending: {} };
+  var D = { x: {}, roster: {}, roles: {}, contacts: {}, posts: [], scrims: [], log: [], shop: {}, drop: {}, pending: {}, teamreq: {} };
   var V = { db: null, id: null, admin: false, owner: false, canWrite: false, loaded: false, error: "" };
   var filter = "all", query = "", editing = null, removing = null, statusTimer = null;
   var confirmDel = null, openRem = null, openScore = null;
@@ -813,6 +814,7 @@ footer { padding-block: 28px 40px; color: var(--muted); font-size: 14px; border-
     db.collection("roles").onSnapshot(function (s) { D.roles = toMap(s); renderAll(); }, fail);
     db.collection("contacts").onSnapshot(function (s) { D.contacts = toMap(s); renderAll(); }, fail);
     db.collection("pending").onSnapshot(function (s) { D.pending = toMap(s); renderAll(); }, fail);
+    db.collection("teamreq").onSnapshot(function (s) { D.teamreq = toMap(s); renderScrims(); }, function () {});
     db.collection("posts").orderBy("at", "desc").limit(40).onSnapshot(function (s) { D.posts = toList(s); renderAll(); }, fail);
     db.collection("scrims").orderBy("at", "desc").limit(30).onSnapshot(function (s) { D.scrims = toList(s); renderAll(); }, fail);
     db.doc("settings/shop").onSnapshot(function (s) { D.shop = s.exists ? Object.assign({}, s.data()) : {}; renderShop(); }, fail);
@@ -1028,6 +1030,8 @@ footer { padding-block: 28px 40px; color: var(--muted); font-size: 14px; border-
     if (!teams.length) tw.append(el("p", { class: "muted" }, "Teams are not set yet."));
     card.append(tw);
     if (st.has) card.append(resultsBox(s, st));
+    if (V.admin) { var trr = teamReqRows(s); if (trr) card.append(trr); }
+    else if (!isPast && teams.length && !st.has) { var tp = teamPick(s); if (tp) card.append(tp); }
     if (V.admin) {
       var acts = el("div", { class: "row-btns" });
       var key = "s:" + s.id;
@@ -1050,6 +1054,63 @@ footer { padding-block: 28px 40px; color: var(--muted); font-size: 14px; border-
     }
     return card;
   }
+  /* ---------- members ask for a team, leaders approve ---------- */
+  function setReqs(devId, who, reqs) {
+    var ref = V.db.doc("teamreq/" + devId);
+    return Object.keys(reqs).length ? ref.set({ who: who, reqs: reqs }) : ref.delete();
+  }
+  function teamPick(s) {
+    if (!V.db || !V.id) return null;
+    var me = myId();
+    if (!me) return el("p", { class: "muted", style: "margin:0;font-size:14px" }, "Pick your name on the site first, then you can ask for a team here.");
+    var own = D.teamreq[V.id] || {}, req = own.reqs && own.reqs[s.id];
+    var mine = (s.teams || []).filter(function (t) { return (t.members || []).indexOf(me) > -1; })[0];
+    if (req) return el("div", { class: "pick" }, el("span", {}, "You asked for Team " + req.team + ". A leader will confirm it. "),
+      el("button", { type: "button", class: "btn small", onclick: function () {
+        var r = Object.assign({}, own.reqs || {}); delete r[s.id];
+        run(function () { return setReqs(V.id, own.who || me, r); }, "Request cancelled."); } }, "Cancel"));
+    var row = el("div", { class: "row-btns" });
+    (s.teams || []).slice().sort(function (a, b) { return a.no - b.no; }).forEach(function (t) {
+      if (mine && mine.no === t.no) return;
+      row.append(el("button", { type: "button", class: "btn small", onclick: function () {
+        var r = Object.assign({}, own.reqs || {}); r[s.id] = { team: t.no, at: Date.now() };
+        run(function () { return setReqs(V.id, me, r); }, "Request sent. A leader will confirm it."); } }, "Team " + t.no + (t.nick ? " · " + t.nick : "")));
+    });
+    if (!row.childNodes.length) return null;
+    return el("div", { class: "pick" }, el("b", {}, mine ? "Want a different team? Ask for it:" : "Want to join a team? Ask for it:"), row);
+  }
+  function teamReqRows(s) {
+    var rows = [];
+    Object.keys(D.teamreq || {}).forEach(function (devId) {
+      var d = D.teamreq[devId], r = d && d.reqs && d.reqs[s.id];
+      if (r && d.who && D.roster[d.who]) rows.push({ dev: devId, who: d.who, no: r.team, at: r.at || 0 });
+    });
+    if (!rows.length) return null;
+    rows.sort(function (a, b) { return a.at - b.at; });
+    var box = el("div", { class: "panel", style: "padding:12px;display:grid;gap:8px" }, el("h4", { style: "margin:0;font:700 17px/1.2 var(--body)" }, "Team requests ", el("span", { class: "pill" }, rows.length)));
+    rows.forEach(function (row) {
+      var t = (s.teams || []).filter(function (x) { return x.no === row.no; })[0];
+      box.append(el("div", { class: "sc-row" }, el("span", { class: "sc-name" }, nameSpan(row.who, ""), " wants Team " + row.no + (t ? " (" + (t.members || []).length + " now)" : " (team gone)")),
+        el("button", { type: "button", class: "btn small primary", onclick: function () { approveTeam(s, row); } }, "Approve"),
+        el("button", { type: "button", class: "btn small", onclick: function () { dropTeamReq(s, row, "Request declined."); } }, "Decline")));
+    });
+    return box;
+  }
+  function dropTeamReq(s, row, ok) {
+    var d = D.teamreq[row.dev] || {}, r = Object.assign({}, d.reqs || {}); delete r[s.id];
+    return run(function () { return setReqs(row.dev, d.who, r); }, ok);
+  }
+  function approveTeam(s, row) {
+    var t = (s.teams || []).filter(function (x) { return x.no === row.no; })[0];
+    if (!t) { dropTeamReq(s, row, "That team no longer exists, so the request was removed."); return; }
+    var teams = (s.teams || []).map(function (x) { return { no: x.no, nick: x.nick || "", members: (x.members || []).filter(function (id) { return id !== row.who; }) }; });
+    teams.forEach(function (x) { if (x.no === row.no) x.members.push(row.who); });
+    teams = teams.filter(function (x) { return x.members.length; });
+    var d = D.teamreq[row.dev] || {}, r = Object.assign({}, d.reqs || {}); delete r[s.id];
+    run(function () { return V.db.doc("scrims/" + s.id).update({ teams: teams }).then(function () { return setReqs(row.dev, d.who, r); }); }, nameOf(row.who) + " is now in Team " + row.no + ".")
+      .then(function (ok) { if (ok) logEvt(nameOf(row.who) + " moved to Team " + row.no + " in " + (s.title || "Scrim")); });
+  }
+
   /* ---------- results: kills, finishing position, points ---------- */
   var GAMES = 3, KILL_PTS = 3, POS_PTS = { 1: 20, 2: 15, 3: 10 }, KEEP_MS = 30 * 864e5;
   function hasResults(s) { return !!((s.kills && Object.keys(s.kills).length) || (s.place && Object.keys(s.place).length)); }

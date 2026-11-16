@@ -111,6 +111,7 @@ const RULES = {
   roster:   { read: 'view',  write: 'admin', self: { read: 'view',     write: 'interact' } },
   contacts: { read: 'admin', write: 'admin', self: { read: 'interact', write: 'interact' } },
   pending:  { read: 'admin', write: 'admin', self: { read: 'interact', write: 'interact' } },
+  teamreq:  { read: 'admin', write: 'admin', self: { read: 'interact', write: 'interact' } },
   log:      { read: 'admin', write: 'admin' },
   roles:    { read: 'view',  write: 'owner' },
 };
@@ -119,7 +120,7 @@ function can(op, col, id, a) {
   const r = RULES[col] || DEFAULT_RULE;
   if (level(a) >= LV[r[op]]) return true;
   if (r.self && id && a.id === id && level(a) >= LV[r.self[op]]) return true;
-  if (col === 'pending' && a.dev && id === a.dev) return true;     // a visitor's own join request
+  if ((col === 'pending' || col === 'teamreq') && a.dev && id === a.dev) return true;     // a visitor's own join / team request
   return false;
 }
 
